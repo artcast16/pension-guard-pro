@@ -52,7 +52,7 @@ m1, m2, m3, m4 = st.columns(4)
 
 def mostrar_metrica(col, titulo, data, es_moneda=True):
     if data is not None and len(data) >= 2:
-actual = data.iloc[-1]
+    actual = data.iloc[-1]
 anterior = data.iloc[-2]
 delta = actual - anterior
 prefijo = "$" if es_moneda else ""
@@ -118,6 +118,7 @@ with st.sidebar:
         df_final.to_csv(DB_FILE, index=False)
         st.success(f"Dato guardado.")
         st.rerun()
+
 
 
 
