@@ -46,20 +46,36 @@ else: st.error(m_sug)
 
 st.info(f"💡 **Mix Sugerido Hoy:** 100% Fondo {f_sug}")
 
-# MÉTRICAS
+--- MÉTRICAS CON FLECHAS DE TENDENCIA ---
 st.markdown("---")
 m1, m2, m3, m4 = st.columns(4)
-with m1: st.metric("Dólar", f"${dolar.iloc[-1]:.2f}" if dolar is not None else "N/A")
-with m2: st.metric("Cobre", f"US${cobre.iloc[-1]:.2f}" if cobre is not None else "N/A")
-with m3: st.metric("S&P 500", f"{sp500.iloc[-1]:.0f}" if sp500 is not None else "N/A")
-with m4: st.metric("IPSA", f"{ipsa.iloc[-1]:.0f}" if ipsa is not None else "N/A")
 
-# GRÁFICOS DE MERCADO
+def mostrar_metrica(col, titulo, data, es_moneda=True):
+if data is not None and len(data) >= 2:
+actual = data.iloc[-1]
+anterior = data.iloc[-2]
+delta = actual - anterior
+prefijo = "$" if es_moneda else ""
+col.metric(titulo, f"{prefijo}{actual:,.2f}", f"{delta:,.2f}")
+else:
+col.metric(titulo, "N/A")
+
+with m1: mostrar_metrica(st, "Dólar", dolar)
+with m2: mostrar_metrica(st, "Cobre", cobre)
+with m3: mostrar_metrica(st, "S&P 500", sp500, False)
+with m4: mostrar_metrica(st, "IPSA", ipsa, False)
+
+--- GRÁFICOS DE MERCADO CON ZOOM ---
+st.markdown("### 📊 Gráficos de Tendencia")
 c1, c2 = st.columns(2)
 with c1:
-    if dolar is not None: st.line_chart(dolar, height=200)
+if dolar is not None:
+st.markdown("Evolución Dólar (Últimos días)")
+st.line_chart(dolar)
 with c2:
-    if sp500 is not None: st.line_chart(sp500, height=200)
+if sp500 is not None:
+st.markdown("Evolución S&P 500 (Wall Street)")
+st.line_chart(sp500)
 
 # --- SECCIÓN DE REALIDAD (TU GRÁFICO DE CORRELACIÓN) ---
 st.markdown("---")
@@ -102,3 +118,4 @@ with st.sidebar:
         df_final.to_csv(DB_FILE, index=False)
         st.success(f"Dato guardado.")
         st.rerun()
+
