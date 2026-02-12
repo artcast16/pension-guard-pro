@@ -15,43 +15,44 @@ DB_FILE = "movimientos_pensionado.csv"
 
 # --- FUNCIONES ---
 @st.cache_data(ttl=3600)
-def obtener_data(ticker):
+def obtener_data(ticker, nombre):
     try:
         data = yf.Ticker(ticker).history(period="3mo")
-        return data['Close'] if not data.empty and len(data) > 1 else None
-    except: return None
+        if not data.empty and len(data) > 1:
+            return data['Close']
+        else:
+            st.caption(f"⚠️ {nombre}: No disponible en este momento.")
+            return None
+    except:
+        st.caption(f"⚠️ {nombre}: Error de conexión.")
+        return None
 
-def enviar_alerta_email(mensaje):
-    try:
-        msg = EmailMessage()
-        msg.set_content(mensaje)
-        msg['Subject'] = "🛡️ Alerta PensionGuard Pro"
-        msg['From'] = MI_CORREO
-        msg['To'] = MI_CORREO
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(MI_CORREO, MI_PASSWORD_APP)
-            server.send_message(msg)
-        return True
-    except: return False
+# --- OBTENCIÓN INDEPENDIENTE DE DATOS ---
+dolar = obtener_data("CLP=X", "Dólar")
+cobre = obtener_data("HG=F", "Cobre")
+sp500 = obtener_data("^GSPC", "S&P 500")
+ipsa = obtener_data("^IPSA", "IPSA")
 
-# --- DATOS ---
-dolar = obtener_data("CLP=X")
-cobre = obtener_data("HG=F")
-sp500 = obtener_data("^GSPC")
-ipsa = obtener_data("^IPSA")
-
-# --- LÓGICA ---
-def evaluar(d, s):
-    if d is None or s is None: return "D", "Esperando datos...", "info"
-    if d.iloc[-1] > d.iloc[-5] and s.iloc[-1] > s.iloc[-5]:
-        return "C", "ESCENARIO FAVORABLE: Impulso en mercados.", "success"
-    if d.iloc[-1] < d.iloc[-5] and s.iloc[-1] < s.iloc[-5]:
-        return "E", "RIESGO DETECTADO: Sugerencia refugio en Fondo E.", "error"
-    return "D", "ESCENARIO MIXTO: Mantener cautela.", "warning"
+# --- LÓGICA DE ESTRATEGIA ROBUSTA ---
+def evaluar_inteligente(d, s):
+    # Si faltan los datos base para decidir, sugerimos precaución (D)
+    if d is None or s is None:
+        return "D", "Sugerencia basada en datos parciales. Se recomienda cautela.", "warning"
+    
+    sube_dolar = d.iloc[-1] > d.iloc[-5]
+    sube_sp500 = s.iloc[-1] > s.iloc[-5]
+    
+    if sube_dolar and sube_sp500:
+        return "C", "ESCENARIO FAVORABLE: Impulso detectado en mercados internacionales.", "success"
+    elif not sube_dolar and not sube_sp500:
+        return "E", "ALERTA DE REFUGIO: Debilidad generalizada. Considerar Fondo E.", "error"
+    else:
+        return "D", "ESCENARIO MIXTO: Sin tendencia clara. Mantener equilibrio en Fondo D.", "warning"
 
 # --- INTERFAZ ---
 st.title("🛡️ PensionGuard Pro: Centinela Arturo")
-f_sug, m_sug, t_alerta = evaluar(dolar, sp500)
+
+f_sug, m_sug, t_alerta = evaluar_inteligente(dolar, sp500)
 
 if t_alerta == "success": st.success(m_sug)
 elif t_alerta == "warning": st.warning(m_sug)
@@ -62,19 +63,32 @@ st.info(f"💡 **Mix Sugerido:** 100% Fondo {f_sug}")
 # MÉTRICAS
 st.markdown("---")
 m1, m2, m3, m4 = st.columns(4)
-with m1:
-    if dolar is not None: st.metric("Dólar", f"${dolar.iloc[-1]:.2f}", f"{dolar.iloc[-1]-dolar.iloc[-2]:.2f}")
-with m2:
-    if cobre is not None: st.metric("Cobre", f"US${cobre.iloc[-1]:.2f}", f"{cobre.iloc[-1]-cobre.iloc[-2]:.2f}")
-with m3:
-    if sp500 is not None: st.metric("S&P 500", f"{sp500.iloc[-1]:.0f}", f"{sp500.iloc[-1]-sp500.iloc[-2]:.2f}")
-with m4:
-    if ipsa is not None: st.metric("IPSA", f"{ipsa.iloc[-1]:.0f}", f"{ipsa.iloc[-1]-ipsa.iloc[-2]:.2f}")
 
-# GRÁFICOS (4 Gráficos en 2 filas)
+with m1:
+    if dolar is not None: 
+        st.metric("Dólar", f"${dolar.iloc[-1]:.2f}", f"{(dolar.iloc[-1]-dolar.iloc[-2]):.2f}")
+    else: st.metric("Dólar", "N/A")
+
+with m2:
+    if cobre is not None: 
+        st.metric("Cobre", f"US${cobre.iloc[-1]:.2f}", f"{(cobre.iloc[-1]-cobre.iloc[-2]):.2f}")
+    else: st.metric("Cobre", "N/A")
+
+with m3:
+    if sp500 is not None: 
+        st.metric("S&P 500", f"{sp500.iloc[-1]:.0f}", f"{(sp500.iloc[-1]-sp500.iloc[-2]):.2f}")
+    else: st.metric("S&P 500", "N/A")
+
+with m4:
+    if ipsa is not None: 
+        st.metric("IPSA", f"{ipsa.iloc[-1]:.0f}", f"{(ipsa.iloc[-1]-ipsa.iloc[-2]):.2f}")
+    else: st.metric("IPSA", "N/A")
+
+# GRÁFICOS DINÁMICOS
 st.markdown("---")
 st.subheader("📊 Tendencias Pro")
 c1, c2 = st.columns(2)
+
 with c1:
     if dolar is not None:
         st.write("**Dólar (USD/CLP)**")
@@ -82,6 +96,7 @@ with c1:
     if sp500 is not None:
         st.write("**S&P 500 (Wall Street)**")
         st.line_chart(sp500)
+
 with c2:
     if cobre is not None:
         st.write("**Cobre (Londres)**")
@@ -93,8 +108,11 @@ with c2:
 # SIDEBAR
 with st.sidebar:
     st.header("📝 Mi Bitácora")
-    f_act = st.radio("Fondo:", ["C", "D", "E"])
-    if st.button("Guardar"):
+    f_act = st.radio("Fondo actual:", ["C", "D", "E"])
+    if st.button("Guardar Cambio"):
         nuevo = pd.DataFrame([[datetime.now().strftime("%d/%m/%Y"), f_act]], columns=["Fecha", "Fondo"])
         nuevo.to_csv(DB_FILE, mode='a', header=not os.path.exists(DB_FILE), index=False)
-        st.success("Listo")
+        st.success("Guardado en la nube.")
+    if os.path.isfile(DB_FILE):
+        st.divider()
+        st.dataframe(pd.read_csv(DB_FILE).tail(5))
