@@ -2,7 +2,7 @@ name: Alerta Diaria PensionGuard
 
 on:
   schedule:
-    - cron: '0 13 * * *'  # Esto es las 10:00 AM en Chile (UTC-3)
+    - cron: - cron: '0 14 * * *'  # Esto es las 10:00 AM en Chile (UTC-3)
   workflow_dispatch:      # Este botón te permite probarlo manualmente
 
 jobs:
