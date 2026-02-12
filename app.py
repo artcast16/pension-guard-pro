@@ -46,7 +46,7 @@ else: st.error(m_sug)
 
 st.info(f"💡 **Mix Sugerido Hoy:** 100% Fondo {f_sug}")
 
---- MÉTRICAS CON FLECHAS DE TENDENCIA ---
+# --- MÉTRICAS CON FLECHAS DE TENDENCIA ---
 st.markdown("---")
 m1, m2, m3, m4 = st.columns(4)
 
@@ -65,7 +65,7 @@ with m2: mostrar_metrica(st, "Cobre", cobre)
 with m3: mostrar_metrica(st, "S&P 500", sp500, False)
 with m4: mostrar_metrica(st, "IPSA", ipsa, False)
 
---- GRÁFICOS DE MERCADO CON ZOOM ---
+# --- GRÁFICOS DE MERCADO CON ZOOM ---
 st.markdown("### 📊 Gráficos de Tendencia")
 c1, c2 = st.columns(2)
 with c1:
@@ -118,4 +118,5 @@ with st.sidebar:
         df_final.to_csv(DB_FILE, index=False)
         st.success(f"Dato guardado.")
         st.rerun()
+
 
