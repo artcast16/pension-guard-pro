@@ -15,7 +15,7 @@ st.set_page_config(page_title="PensionGuard Pro", layout="wide")
 # --- FUNCIONES DE DATOS ---
 @st.cache_data(ttl=3600)
 def obtener_data(ticker, nombre):
-try:
+    try:
 data = yf.Ticker(ticker).history(period="3mo")
 return data['Close'] if not data.empty and len(data) > 1 else None
 except:
@@ -104,3 +104,4 @@ st.header("📝 Mi Bitácora")
 fecha_reg = st.date_input("Fecha del dato:", datetime.now())
 f_act = st.radio("Fondo en esa fecha:", ["C", "D", "E"])
 v_cuota = st.number_input("Valor Cuota Planvital ($):", min_value=0.0, step=0.01, format="%.2f")
+
