@@ -10,7 +10,7 @@ from datetime import datetime
 MI_CORREO = "arturocast@gmail.com"
 MI_PASSWORD_APP = "atyz mpvi eimd bydi"
 
-st.set_page_config(page_title="PensionGuard Pro: Centinela Arturo", layout="wide")
+st.set_page_config(page_title="PensionGuard Pro", layout="wide")
 DB_FILE = "movimientos_pensionado.csv"
 
 # --- FUNCIÓN DE ENVÍO DE EMAIL ---
@@ -43,15 +43,15 @@ ipsa = obtener_data("^IPSA")
 
 # --- LÓGICA DE ESTRATEGIA (C-D-E) ---
 def evaluar_estrategia(d, c, s):
-    if d is None or s is None: return "D", "Esperando datos de mercado...", "info"
+    if d is None or s is None: return "D", "Esperando datos...", "info"
     sube_dolar = d.iloc[-1] > d.iloc[-5]
     sube_sp500 = s.iloc[-1] > s.iloc[-5]
     if sube_dolar and sube_sp500:
         return "C", "OPORTUNIDAD: Mercados al alza y dólar fuerte.", "success"
     elif not sube_dolar and not sube_sp500:
-        return "E", "REFUGIO: Caída generalizada. Proteger capital en Fondo E.", "error"
+        return "E", "REFUGIO: Caída generalizada. Proteger capital.", "error"
     else:
-        return "D", "PRECAUCIÓN: Mercado volátil. Mantener equilibrio en Fondo D.", "warning"
+        return "D", "PRECAUCIÓN: Mercado volátil.", "warning"
 
 # --- INTERFAZ ---
 st.title("🛡️ PensionGuard Pro: Centinela Arturo")
@@ -63,34 +63,31 @@ else: st.warning(f"⚠️ {analisis}")
 
 st.info(f"💡 **Mix Sugerido:** 100% Fondo {fondo_sugerido}")
 
-# MÉTRICAS CON TENDENCIAS
+# MÉTRICAS
 st.markdown("---")
-cols = st.columns(4) # 4 columnas para incluir el IPSA
-
+cols = st.columns(4)
 with cols[0]:
-    if dolar is not None:
-        delta = dolar.iloc[-1] - dolar.iloc[-2]
-        st.metric("Dólar", f"${dolar.iloc[-1]:.2f}", f"{delta:.2f}")
+    if dolar is not None: st.metric("Dólar", f"${dolar.iloc[-1]:.2f}", f"{(dolar.iloc[-1]-dolar.iloc[-2]):.2f}")
 with cols[1]:
-    if cobre is not None:
-        delta_c = cobre.iloc[-1] - cobre.iloc[-2]
-        st.metric("Cobre", f"US${cobre.iloc[-1]:.2f}", f"{delta_c:.2f}")
+    if cobre is not None: st.metric("Cobre", f"US${cobre.iloc[-1]:.2f}", f"{(cobre.iloc[-1]-cobre.iloc[-2]):.2f}")
 with cols[2]:
-    if sp500 is not None:
-        delta_s = sp500.iloc[-1] - sp500.iloc[-2]
-        st.metric("S&P 500", f"{sp500.iloc[-1]:.0f}", f"{delta_s:.2f}")
+    if sp500 is not None: st.metric("S&P 500", f"{sp500.iloc[-1]:.0f}", f"{(sp500.iloc[-1]-sp500.iloc[-2]):.2f}")
 with cols[3]:
-    if ipsa is not None:
-        delta_i = ipsa.iloc[-1] - ipsa.iloc[-2]
-        st.metric("IPSA (Chile)", f"{ipsa.iloc[-1]:.0f}", f"{delta_i:.2f}")
-    else:
-        st.caption("IPSA: Sin datos hoy")
+    if ipsa is not None: st.metric("IPSA (Chile)", f"{ipsa.iloc[-1]:.0f}", f"{(ipsa.iloc[-1]-ipsa.iloc[-2]):.2f}")
 
-# Gráficos y Sidebar (Igual que antes pero optimizado)
+# --- GRÁFICOS (CORREGIDOS PARA LA NUBE) ---
+st.markdown("---")
 ca, cb = st.columns(2)
-with ca: st.line_chart(dolar, y_label="Dólar", color="#29b5e8")
-with cb: st.line_chart(cobre, y_label="Cobre", color="#ff7f0e")
+with ca:
+    if dolar is not None:
+        st.write("**Evolución Dólar**")
+        st.line_chart(dolar) # Quitamos el color fijo para evitar el error de longitud
+with cb:
+    if cobre is not None:
+        st.write("**Evolución Cobre**")
+        st.line_chart(cobre)
 
+# BARRA LATERAL
 with st.sidebar:
     st.header("📝 Mi Bitácora Pro")
     f_dest = st.radio("Fondo actual:", ["C", "D", "E"])
