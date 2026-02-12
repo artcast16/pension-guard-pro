@@ -1,0 +1,56 @@
+name: Alerta Diaria PensionGuard
+
+on:
+  schedule:
+    - cron: '0 13 * * *'  # Esto es las 10:00 AM en Chile (UTC-3)
+  workflow_dispatch:      # Este botón te permite probarlo manualmente
+
+jobs:
+  enviar_alerta:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Instalar yfinance
+        run: pip install yfinance
+
+      - name: Ejecutar Lógica de Alerta
+        env:
+          MI_CORREO: ${{ secrets.MI_CORREO }}
+          MI_PASSWORD_APP: ${{ secrets.MI_PASSWORD_APP }}
+        run: |
+          python -c "
+          import yfinance as yf
+          import smtplib
+          from email.message import EmailMessage
+          import os
+
+          def enviar(msg_texto):
+              msg = EmailMessage()
+              msg.set_content(msg_texto)
+              msg['Subject'] = '🛡️ Reporte Diario PensionGuard Pro'
+              msg['From'] = os.environ['MI_CORREO']
+              msg['To'] = os.environ['MI_CORREO']
+              with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+                  server.login(os.environ['MI_CORREO'], os.environ['MI_PASSWORD_APP'])
+                  server.send_message(msg)
+
+          d = yf.Ticker('CLP=X').history(period='5d')['Close']
+          s = yf.Ticker('^GSPC').history(period='5d')['Close']
+          
+          if not d.empty and not s.empty:
+              sube_d = d.iloc[-1] > d.iloc[-4]
+              sube_s = s.iloc[-1] > s.iloc[-4]
+              if sube_d and sube_s:
+                  enviar('Sugerencia: Fondo C. Los mercados internacionales y el dólar están al alza.')
+              elif not sube_d and not sube_s:
+                  enviar('🚨 ALERTA: Sugerencia Fondo E. Se detecta debilidad generalizada en el mercado.')
+              else:
+                  enviar('Sugerencia: Fondo D. El mercado está mixto o lateral.')
+          "
