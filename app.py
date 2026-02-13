@@ -8,7 +8,6 @@ from datetime import datetime
 
 # --- CONFIGURACIÓN DE ARCHIVOS ---
 DB_FILE = "movimientos_pensionado.csv"
-HISTORIAL_SUGERENCIAS = "historial_sugerencias.csv"
 
 st.set_page_config(page_title="PensionGuard Pro", layout="wide")
 
@@ -16,18 +15,9 @@ st.set_page_config(page_title="PensionGuard Pro", layout="wide")
 @st.cache_data(ttl=3600)
 def obtener_data(ticker, nombre):
     try:
-        # Probamos con un periodo más largo y forzamos la descarga
-        ticker_obj = yf.Ticker(ticker)
-        data = ticker_obj.history(period="1mo", interval="1d")
-        
-        if data is not None and not data.empty:
+        data = yf.Ticker(ticker).history(period="3mo")
+        if not data.empty and len(data) > 1:
             return data['Close']
-        
-        # Intento de respaldo si el anterior falla
-        data = yf.download(ticker, period="1mo", progress=False)
-        if not data.empty:
-            return data['Close']
-            
         return None
     except Exception:
         return None
@@ -65,7 +55,7 @@ else:
 
 st.info(f"💡 **Mix Sugerido Hoy:** 100% Fondo {f_sug}")
 
-# --- MÉTRICAS CON FLECHAS DE TENDENCIA ---
+# --- MÉTRICAS ---
 st.markdown("---")
 m1, m2, m3, m4 = st.columns(4)
 
@@ -84,56 +74,75 @@ mostrar_metrica(m2, "Cobre", cobre)
 mostrar_metrica(m3, "S&P 500", sp500, False)
 mostrar_metrica(m4, "IPSA", ipsa, False)
 
-# --- GRÁFICOS DE MERCADO CON ZOOM ---
+# --- GRÁFICOS DE MERCADO ---
 st.markdown("### 📊 Gráficos de Tendencia")
 c1, c2 = st.columns(2)
+
+def crear_grafico(data, titulo, color):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=data.index, y=data.values, mode='lines', line=dict(color=color, width=2)))
+    fig.update_layout(height=300, margin=dict(l=0, r=0, t=30, b=0), title=titulo,
+                      yaxis=dict(autorange=True, fixedrange=False))
+    return fig
+
 with c1:
     if dolar is not None:
-        st.markdown("**Evolución Dólar (CLP)**")
-        st.line_chart(dolar)
+        st.plotly_chart(crear_grafico(dolar, "Evolución Dólar", "#00FFAA"), use_container_width=True)
 with c2:
     if sp500 is not None:
-        st.markdown("**Evolución S&P 500 (Wall Street)**")
-        st.line_chart(sp500)
+        st.plotly_chart(crear_grafico(sp500, "Evolución S&P 500", "#FF4B4B"), use_container_width=True)
 
-# --- SECCIÓN DE REALIDAD (GRÁFICO DE CORRELACIÓN) ---
+# --- SECCIÓN DE REALIDAD EVOLUCIONADA ---
 st.markdown("---")
-st.subheader("📈 Mi Realidad: Mi Fondo vs. Valor Cuota Planvital")
+st.subheader("📈 Comparativa de Fondos vs. Sugerencia del Centinela")
 
 if os.path.exists(DB_FILE):
     df_real = pd.read_csv(DB_FILE)
     if not df_real.empty:
-        mapping = {'E': 1, 'D': 2, 'C': 3}
-        df_real['Nivel'] = df_real['Fondo'].map(mapping)
+        df_real['Fecha_dt'] = pd.to_datetime(df_real['Fecha'], format="%d/%m/%Y")
+        df_real = df_real.sort_values('Fecha_dt')
         
         fig = make_subplots(specs=[[{"secondary_y": True}]])
-        fig.add_trace(go.Scatter(x=df_real['Fecha'], y=df_real['Nivel'], name="Mi Fondo", line=dict(color='orange', width=3, shape='hv')), secondary_y=False)
-        fig.add_trace(go.Scatter(x=df_real['Fecha'], y=df_real['Valor_Cuota'], name="Valor Cuota ($)", line=dict(color='green', width=4)), secondary_y=True)
+        colores = {"C": "#FF4B4B", "D": "#FFA500", "E": "#00FF00"}
         
-        fig.update_yaxes(title_text="Fondo", secondary_y=False, tickvals=[1, 2, 3], ticktext=["E", "D", "C"])
+        # Líneas de los Fondos
+        for f in ["C", "D", "E"]:
+            if f"Cuota_{f}" in df_real.columns:
+                fig.add_trace(go.Scatter(x=df_real['Fecha'], y=df_real[f"Cuota_{f}"], 
+                                         name=f"Fondo {f}", line=dict(color=colores[f], width=2)), secondary_y=True)
+
+        # Marcadores de Mi Posición + Sugerencia IA
+        fig.add_trace(go.Scatter(x=df_real['Fecha'], y=df_real['Mi_Fondo'], 
+                                 name="Mi Posición (Letra=IA)", mode="markers+text",
+                                 text=df_real['Sugerencia_IA'], textposition="top center",
+                                 marker=dict(size=12, symbol="diamond", color="white")), secondary_y=False)
+
+        fig.update_yaxes(title_text="Posición", secondary_y=False, tickvals=["C", "D", "E"])
         fig.update_yaxes(title_text="Valor Cuota ($)", secondary_y=True)
         st.plotly_chart(fig, use_container_width=True)
 else:
-    st.info("Ingresa tu primer valor en el panel lateral para ver la correlación.")
+    st.info("Ingresa los datos de los tres fondos en el panel lateral.")
 
-# --- SIDEBAR (BITÁCORA) ---
+# --- SIDEBAR (BITÁCORA PRO) ---
 with st.sidebar:
-    st.header("📝 Mi Bitácora")
-    fecha_reg = st.date_input("Fecha del dato:", datetime.now())
-    f_act = st.radio("Fondo en esa fecha:", ["C", "D", "E"])
-    v_cuota = st.number_input("Valor Cuota Planvital ($):", min_value=0.0, step=0.01, format="%.2f")
+    st.header("📝 Registro Avanzado")
+    fecha_reg = st.date_input("Fecha:", datetime.now())
     
-    if st.button("Guardar Registro"):
-        nuevo = pd.DataFrame([[fecha_reg.strftime("%d/%m/%Y"), f_act, v_cuota]], 
-                             columns=["Fecha", "Fondo", "Valor_Cuota"])
+    st.write("Valor Cuota Planvital:")
+    v_c = st.number_input("Fondo C ($)", min_value=0.0, format="%.2f")
+    v_d = st.number_input("Fondo D ($)", min_value=0.0, format="%.2f")
+    v_e = st.number_input("Fondo E ($)", min_value=0.0, format="%.2f")
+    
+    mi_f = st.radio("¿En qué fondo estabas ese día?", ["C", "D", "E"])
+    
+    if st.button("Guardar Datos"):
+        nuevo = pd.DataFrame([[fecha_reg.strftime("%d/%m/%Y"), v_c, v_d, v_e, mi_f, f_sug]], 
+                             columns=["Fecha", "Cuota_C", "Cuota_D", "Cuota_E", "Mi_Fondo", "Sugerencia_IA"])
         if os.path.exists(DB_FILE):
             df_ex = pd.read_csv(DB_FILE)
             df_final = pd.concat([df_ex, nuevo]).drop_duplicates(subset=['Fecha'], keep='last')
-            df_final['tmp'] = pd.to_datetime(df_final['Fecha'], format="%d/%m/%Y")
-            df_final = df_final.sort_values('tmp').drop(columns=['tmp'])
         else:
             df_final = nuevo
         df_final.to_csv(DB_FILE, index=False)
-        st.success(f"Dato guardado.")
+        st.success("¡Datos guardados!")
         st.rerun()
-
