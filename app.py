@@ -14,7 +14,6 @@ st.set_page_config(page_title="PensionGuard Pro", layout="wide")
 @st.cache_data(ttl=3600)
 def obtener_data_limpia(ticker):
     try:
-        # Descargamos con limpieza de índices para evitar errores de Yahoo
         df = yf.download(ticker, period="1mo", interval="1d", progress=False)
         if not df.empty:
             if isinstance(df.columns, pd.MultiIndex):
@@ -23,7 +22,6 @@ def obtener_data_limpia(ticker):
         return None
     except: return None
 
-# Captura de los 4 pilares
 dolar = obtener_data_limpia("CLP=X")
 cobre = obtener_data_limpia("HG=F")
 sp500 = obtener_data_limpia("^GSPC")
@@ -56,7 +54,7 @@ def metrica_robusta(col, titulo, data, es_moneda=True):
             v, a = float(data.iloc[-1]), float(data.iloc[-2])
             p = "$" if es_moneda else ""
             col.metric(titulo, f"{p}{v:,.2f}", f"{v-a:,.2f}")
-        else: col.metric(titulo, f"{titulo} (N/A)")
+        else: col.metric(titulo, "N/A")
     except: col.metric(titulo, "S/D")
 
 metrica_robusta(m_cols[0], "💵 Dólar", dolar)
@@ -64,7 +62,7 @@ metrica_robusta(m_cols[1], "🏗️ Cobre", cobre)
 metrica_robusta(m_cols[2], "🇺🇸 S&P 500", sp500, False)
 metrica_robusta(m_cols[3], "🇨🇱 IPSA", ipsa, False)
 
-# --- PANEL DE TENDENCIAS (LOS 4 CUADRADOS) ---
+# --- PANEL DE TENDENCIAS ---
 st.markdown("### 📊 Panel de Tendencias")
 g_cols = st.columns(4)
 def dibujar_mini(data, color, col_st):
@@ -73,7 +71,6 @@ def dibujar_mini(data, color, col_st):
         fig.update_layout(height=130, margin=dict(l=0,r=0,t=0,b=0), template="plotly_dark", 
                           xaxis=dict(visible=False), yaxis=dict(visible=False, autorange=True))
         col_st.plotly_chart(fig, use_container_width=True)
-    else: col_st.info("Buscando señal...")
 
 dibujar_mini(dolar, "#00FFAA", g_cols[0])
 dibujar_mini(cobre, "#FF7F50", g_cols[1])
@@ -89,9 +86,7 @@ with st.sidebar:
             df_n = pd.read_excel(archivo, skiprows=7)
             df_n = df_n[['Fechas', 'Fondo C', 'Fondo D', 'Fondo E']].dropna()
             df_n.columns = ['Fecha', 'Cuota_C', 'Cuota_D', 'Cuota_E']
-            # Normalización de fecha robusta para el CSV
             df_n['Fecha'] = pd.to_datetime(df_n['Fecha']).dt.date.astype(str)
-            df_n['Mi_Fondo'] = "D"
             df_n['Sugerencia_IA'] = f_sug
             if os.path.exists(DB_FILE):
                 df_e = pd.read_csv(DB_FILE)
@@ -102,16 +97,15 @@ with st.sidebar:
             st.rerun()
         except Exception as e: st.error(f"Error Excel: {e}")
 
-# --- EL GRÁFICO DE DOS PISOS ---
+# --- EL GRÁFICO DE DOS PISOS (AJUSTE DE FECHAS DIARIAS) ---
 st.markdown("---")
 st.subheader("📈 Mi Realidad: Valores vs Sugerencias")
 if os.path.exists(DB_FILE):
     try:
         df_p = pd.read_csv(DB_FILE)
         if not df_p.empty:
-            # Limpieza total de fechas antes de graficar
-            df_p['Fecha_dt'] = pd.to_datetime(df_p['Fecha'], errors='coerce')
-            df_p = df_p.dropna(subset=['Fecha_dt']).sort_values('Fecha_dt')
+            df_p['Fecha_dt'] = pd.to_datetime(df_p['Fecha'])
+            df_p = df_p.sort_values('Fecha_dt')
             
             fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.75, 0.25])
             colores = {"C": "#FF4B4B", "D": "#FFA500", "E": "#00FF00"}
@@ -124,8 +118,11 @@ if os.path.exists(DB_FILE):
                                      text=df_p['Sugerencia_IA'], textposition="top center", name="IA",
                                      marker=dict(size=12, symbol="square", color="white")), row=2, col=1)
 
+            # AJUSTE MAESTRO: Forzamos el eje X a mostrar cada día y no agrupar por meses
+            fig.update_xaxes(type='date', dtick="D1", tickformat="%d %b", row=2, col=1)
+            
             fig.update_layout(template="plotly_dark", height=600, margin=dict(t=30), hovermode="x unified")
             fig.update_yaxes(title_text="Valor ($)", row=1, col=1, autorange=True)
             fig.update_yaxes(title_text="IA", row=2, col=1, categoryorder="array", categoryarray=["E", "D", "C"])
             st.plotly_chart(fig, use_container_width=True)
-    except Exception as e: st.warning(f"Ajustando historial... sube el Excel nuevamente. ({e})")
+    except Exception as e: st.info("Sube el Excel para refrescar el historial.")
