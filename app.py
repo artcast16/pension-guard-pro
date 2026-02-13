@@ -10,26 +10,31 @@ from datetime import datetime
 DB_FILE = "movimientos_pensionado_v2.csv"
 st.set_page_config(page_title="PensionGuard Pro", layout="wide")
 
-# --- FUNCIONES DE MERCADO ---
+# --- FUNCIONES DE MERCADO ROBUSTAS ---
 @st.cache_data(ttl=3600)
-def obtener_data(ticker, nombre):
+def obtener_data_robusta(ticker):
     try:
-        data = yf.Ticker(ticker).history(period="3mo")
-        return data['Close'] if not data.empty else None
+        # Intentamos descarga directa para evitar bloqueos
+        df = yf.download(ticker, period="3mo", interval="1d", progress=False)
+        if not df.empty:
+            return df['Close']
+        return None
     except: return None
 
-dolar = obtener_data("CLP=X", "Dólar")
-sp500 = obtener_data("^GSPC", "S&P 500")
-cobre = obtener_data("HG=F", "Cobre")
-ipsa = obtener_data("^IPSA", "IPSA")
+# Captura de los 4 pilares
+dolar = obtener_data_robusta("CLP=X")
+sp500 = obtener_data_robusta("^GSPC")
+cobre = obtener_data_robusta("HG=F")
+ipsa = obtener_data_robusta("^IPSA")
 
 def evaluar_inteligente(d, s):
     if d is None or s is None: return "D", "Esperando datos...", "warning"
+    # Comparamos hoy vs hace 5 días hábiles
     sube_dolar = d.iloc[-1] > d.iloc[-5]
     sube_sp500 = s.iloc[-1] > s.iloc[-5]
-    if sube_dolar and sube_sp500: return "C", "ESCENARIO FAVORABLE", "success"
-    elif not sube_dolar and not sube_sp500: return "E", "ALERTA DE REFUGIO", "error"
-    else: return "D", "ESCENARIO MIXTO", "warning"
+    if sube_dolar and sube_sp500: return "C", "ESCENARIO FAVORABLE (RIESGO OK)", "success"
+    elif not sube_dolar and not sube_sp500: return "E", "ALERTA DE REFUGIO (CONSERVADOR)", "error"
+    else: return "D", "ESCENARIO MIXTO (CAUTELA)", "warning"
 
 f_sug, m_sug, t_alerta = evaluar_inteligente(dolar, sp500)
 
@@ -40,96 +45,85 @@ elif t_alerta == "warning": st.warning(m_sug)
 else: st.error(m_sug)
 st.info(f"💡 **Mix Sugerido Hoy:** 100% Fondo {f_sug}")
 
-# --- MÉTRICAS ---
-m1, m2, m3, m4 = st.columns(4)
+# --- MÉTRICAS E INDICADORES (LOS 4) ---
+st.markdown("---")
+cols_met = st.columns(4)
 def mostrar_metrica(col, titulo, data, es_moneda=True):
     if data is not None and len(data) >= 2:
-        val = data.iloc[-1]
-        delta = val - data.iloc[-2]
+        val = float(data.iloc[-1])
+        delta = val - float(data.iloc[-2])
         p = "$" if es_moneda else ""
         col.metric(titulo, f"{p}{val:,.2f}", f"{delta:,.2f}")
-    else: col.metric(titulo, "N/A")
+    else: col.metric(titulo, "Buscando...", "0.00")
 
-mostrar_metrica(m1, "Dólar", dolar)
-mostrar_metrica(m2, "Cobre", cobre)
-mostrar_metrica(m3, "S&P 500", sp500, False)
-mostrar_metrica(m4, "IPSA", ipsa, False)
+mostrar_metrica(cols_met[0], "💵 Dólar", dolar)
+mostrar_metrica(cols_met[1], "🏗️ Cobre", cobre)
+mostrar_metrica(cols_met[2], "🇺🇸 S&P 500", sp500, False)
+mostrar_metrica(cols_met[3], "🇨🇱 IPSA", ipsa, False)
 
-# --- GRÁFICOS MERCADO ---
-st.markdown("### 📊 Gráficos de Tendencia")
-c1, c2 = st.columns(2)
-def crear_grafico(data, titulo, color):
-    fig = go.Figure(go.Scatter(x=data.index, y=data.values, line=dict(color=color, width=2)))
-    fig.update_layout(height=250, margin=dict(l=0,r=0,t=30,b=0), template="plotly_dark", yaxis=dict(autorange=True))
+# --- GRÁFICOS DE INDICADORES (RECUADROS PEQUEÑOS) ---
+st.markdown("### 📊 Panel de Indicadores")
+g1, g2, g3, g4 = st.columns(4)
+def mini_grafico(data, color):
+    fig = go.Figure(go.Scatter(x=data.index, y=data.values, line=dict(color=color, width=1.5), fill='tozeroy'))
+    fig.update_layout(height=150, margin=dict(l=0,r=0,t=0,b=0), template="plotly_dark", 
+                      xaxis=dict(visible=False), yaxis=dict(visible=False, autorange=True))
     return fig
 
-if dolar is not None: c1.plotly_chart(crear_grafico(dolar, "Dólar", "#00FFAA"), use_container_width=True)
-if sp500 is not None: c2.plotly_chart(crear_grafico(sp500, "S&P 500", "#FF4B4B"), use_container_width=True)
+if dolar is not None: g1.plotly_chart(mini_grafico(dolar, "#00FFAA"), use_container_width=True)
+if cobre is not None: g2.plotly_chart(mini_grafico(cobre, "#FF7F50"), use_container_width=True)
+if sp500 is not None: g3.plotly_chart(mini_grafico(sp500, "#FF4B4B"), use_container_width=True)
+if ipsa is not None: g4.plotly_chart(mini_grafico(ipsa, "#00BFFF"), use_container_width=True)
 
 # --- SIDEBAR: CARGA DE DATOS ---
 with st.sidebar:
-    st.header("📂 Cargar Datos")
-    archivo_excel = st.file_uploader("Subir Excel Planvital", type=["xlsx"])
-    
+    st.header("📂 Datos Planvital")
+    archivo_excel = st.file_uploader("Subir Excel", type=["xlsx"])
     if archivo_excel:
         try:
             df_nuevo = pd.read_excel(archivo_excel, skiprows=7)
             df_nuevo = df_nuevo[['Fechas', 'Fondo C', 'Fondo D', 'Fondo E']].dropna()
             df_nuevo.columns = ['Fecha', 'Cuota_C', 'Cuota_D', 'Cuota_E']
-            # Normalización de fecha robusta
             df_nuevo['Fecha'] = pd.to_datetime(df_nuevo['Fecha']).dt.strftime('%d/%m/%Y')
             df_nuevo['Mi_Fondo'] = "D" 
             df_nuevo['Sugerencia_IA'] = f_sug
-            
             if os.path.exists(DB_FILE):
                 df_ex = pd.read_csv(DB_FILE)
                 df_final = pd.concat([df_ex, df_nuevo]).drop_duplicates(subset=['Fecha'], keep='last')
             else: df_final = df_nuevo
-            
             df_final.to_csv(DB_FILE, index=False)
-            st.success("¡Excel procesado!")
+            st.success("¡Sincronizado!")
             st.rerun()
-        except Exception as e:
-            st.error(f"Error al leer Excel: {e}")
+        except Exception as e: st.error(f"Error: {e}")
 
-    st.markdown("---")
-    st.header("📝 Mi Posición")
-    mi_f = st.radio("Fondo donde estoy hoy:", ["C", "D", "E"])
-    if st.button("Marcar posición actual"):
-        if os.path.exists(DB_FILE):
-            df_m = pd.read_csv(DB_FILE)
-            hoy_str = datetime.now().strftime('%d/%m/%Y')
-            df_m.loc[df_m['Fecha'] == hoy_str, 'Mi_Fondo'] = mi_f
-            df_m.to_csv(DB_FILE, index=False)
-            st.success("Posición marcada")
-            st.rerun()
-
-# --- COMPARATIVA ---
+# --- COMPARATIVA EVOLUCIONADA (DOS PISOS) ---
 st.markdown("---")
-st.subheader("📈 Mi Realidad: Comparativa de Fondos")
+st.subheader("📈 Análisis de Realidad: Valores vs Sugerencias")
 if os.path.exists(DB_FILE):
-    df_plot = pd.read_csv(DB_FILE)
-    if not df_plot.empty:
-        df_plot['Fecha_dt'] = pd.to_datetime(df_plot['Fecha'], format='%d/%m/%Y')
-        df_plot = df_plot.sort_values('Fecha_dt')
+    df_p = pd.read_csv(DB_FILE)
+    if not df_p.empty:
+        df_p['Fecha_dt'] = pd.to_datetime(df_p['Fecha'], format='%d/%m/%Y')
+        df_p = df_p.sort_values('Fecha_dt')
         
-        fig_comp = make_subplots(specs=[[{"secondary_y": True}]])
-        cols = {"C": "#FF4B4B", "D": "#FFA500", "E": "#00FF00"}
+        # Creamos dos filas: una grande para valores y una pequeña para la IA
+        fig_master = make_subplots(rows=2, cols=1, shared_xaxes=True, 
+                                   vertical_spacing=0.05, row_heights=[0.8, 0.2])
         
+        c_fondos = {"C": "#FF4B4B", "D": "#FFA500", "E": "#00FF00"}
+        
+        # Fila 1: Valores Cuota
         for f in ["C", "D", "E"]:
-            c_name = f"Cuota_{f}"
-            if c_name in df_plot.columns:
-                fig_comp.add_trace(go.Scatter(x=df_plot['Fecha_dt'], y=df_plot[c_name], 
-                                             name=f"Fondo {f}", line=dict(color=cols[f], width=3)), secondary_y=True)
+            fig_master.add_trace(go.Scatter(x=df_p['Fecha_dt'], y=df_p[f'Cuota_{f}'], 
+                                           name=f"Fondo {f}", line=dict(color=c_fondos[f], width=3)), row=1, col=1)
         
-        fig_comp.add_trace(go.Scatter(x=df_plot['Fecha_dt'], y=df_plot['Mi_Fondo'], 
-                                     mode="markers+text", text=df_plot['Sugerencia_IA'],
-                                     name="IA Sugirió", textfont=dict(color="white"),
-                                     marker=dict(size=14, symbol="diamond", color="white", line=dict(width=2, color="black"))), secondary_y=False)
+        # Fila 2: La sugerencia de la IA (como una línea de tiempo separada)
+        fig_master.add_trace(go.Scatter(x=df_p['Fecha_dt'], y=df_p['Sugerencia_IA'], 
+                                       mode="markers+text", text=df_p['Sugerencia_IA'], 
+                                       textposition="top center", name="Línea IA",
+                                       marker=dict(size=12, symbol="square", color="white")), row=2, col=1)
+
+        fig_master.update_layout(template="plotly_dark", height=700, showlegend=True, hovermode="x unified")
+        fig_master.update_yaxes(title_text="Valor Cuota ($)", row=1, col=1, autorange=True)
+        fig_master.update_yaxes(title_text="IA", row=2, col=1, categoryorder="array", categoryarray=["E", "D", "C"])
         
-        fig_comp.update_layout(template="plotly_dark", height=600, hovermode="x unified",
-                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        fig_comp.update_yaxes(title_text="Fondo Sugerido", secondary_y=False, categoryorder="array", categoryarray=["E", "D", "C"])
-        fig_comp.update_yaxes(title_text="Valor Cuota ($)", secondary_y=True, autorange=True)
-        
-        st.plotly_chart(fig_comp, use_container_width=True)
+        st.plotly_chart(fig_master, use_container_width=True)
