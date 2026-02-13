@@ -16,9 +16,18 @@ st.set_page_config(page_title="PensionGuard Pro", layout="wide")
 @st.cache_data(ttl=3600)
 def obtener_data(ticker, nombre):
     try:
-        data = yf.Ticker(ticker).history(period="3mo")
-        if not data.empty and len(data) > 1:
+        # Probamos con un periodo más largo y forzamos la descarga
+        ticker_obj = yf.Ticker(ticker)
+        data = ticker_obj.history(period="1mo", interval="1d")
+        
+        if data is not None and not data.empty:
             return data['Close']
+        
+        # Intento de respaldo si el anterior falla
+        data = yf.download(ticker, period="1mo", progress=False)
+        if not data.empty:
+            return data['Close']
+            
         return None
     except Exception:
         return None
@@ -127,3 +136,4 @@ with st.sidebar:
         df_final.to_csv(DB_FILE, index=False)
         st.success(f"Dato guardado.")
         st.rerun()
+
