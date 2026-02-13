@@ -73,12 +73,12 @@ with st.sidebar:
     
     if archivo_excel:
         try:
-            # Planvital usa la fila 8 para encabezados (index 7)
             df_nuevo = pd.read_excel(archivo_excel, skiprows=7)
             df_nuevo = df_nuevo[['Fechas', 'Fondo C', 'Fondo D', 'Fondo E']].dropna()
             df_nuevo.columns = ['Fecha', 'Cuota_C', 'Cuota_D', 'Cuota_E']
+            # Normalización de fecha robusta
             df_nuevo['Fecha'] = pd.to_datetime(df_nuevo['Fecha']).dt.strftime('%d/%m/%Y')
-            df_nuevo['Mi_Fondo'] = "E" # Valor por defecto
+            df_nuevo['Mi_Fondo'] = "D" 
             df_nuevo['Sugerencia_IA'] = f_sug
             
             if os.path.exists(DB_FILE):
@@ -93,21 +93,20 @@ with st.sidebar:
             st.error(f"Error al leer Excel: {e}")
 
     st.markdown("---")
-    st.header("📝 Registro Manual")
-    fecha_man = st.date_input("Fecha:", datetime.now())
-    mi_f = st.radio("Tu fondo actual:", ["C", "D", "E"])
-    if st.button("Actualizar mi posición"):
+    st.header("📝 Mi Posición")
+    mi_f = st.radio("Fondo donde estoy hoy:", ["C", "D", "E"])
+    if st.button("Marcar posición actual"):
         if os.path.exists(DB_FILE):
             df_m = pd.read_csv(DB_FILE)
-            fecha_str = fecha_man.strftime('%d/%m/%Y')
-            df_m.loc[df_m['Fecha'] == fecha_str, 'Mi_Fondo'] = mi_f
+            hoy_str = datetime.now().strftime('%d/%m/%Y')
+            df_m.loc[df_m['Fecha'] == hoy_str, 'Mi_Fondo'] = mi_f
             df_m.to_csv(DB_FILE, index=False)
-            st.success("Posición actualizada")
+            st.success("Posición marcada")
             st.rerun()
 
 # --- COMPARATIVA ---
 st.markdown("---")
-st.subheader("📈 Comparativa Fondos vs Centinela")
+st.subheader("📈 Mi Realidad: Comparativa de Fondos")
 if os.path.exists(DB_FILE):
     df_plot = pd.read_csv(DB_FILE)
     if not df_plot.empty:
@@ -118,12 +117,19 @@ if os.path.exists(DB_FILE):
         cols = {"C": "#FF4B4B", "D": "#FFA500", "E": "#00FF00"}
         
         for f in ["C", "D", "E"]:
-            fig_comp.add_trace(go.Scatter(x=df_plot['Fecha'], y=df_plot[f'Cuota_{f}'], 
-                                         name=f"Fondo {f}", line=dict(color=cols[f])), secondary_y=True)
+            c_name = f"Cuota_{f}"
+            if c_name in df_plot.columns:
+                fig_comp.add_trace(go.Scatter(x=df_plot['Fecha_dt'], y=df_plot[c_name], 
+                                             name=f"Fondo {f}", line=dict(color=cols[f], width=3)), secondary_y=True)
         
-        fig_comp.add_trace(go.Scatter(x=df_plot['Fecha'], y=df_plot['Mi_Fondo'], 
+        fig_comp.add_trace(go.Scatter(x=df_plot['Fecha_dt'], y=df_plot['Mi_Fondo'], 
                                      mode="markers+text", text=df_plot['Sugerencia_IA'],
-                                     name="IA Sugiere", marker=dict(size=12, symbol="diamond", color="white")), secondary_y=False)
+                                     name="IA Sugirió", textfont=dict(color="white"),
+                                     marker=dict(size=14, symbol="diamond", color="white", line=dict(width=2, color="black"))), secondary_y=False)
         
-        fig_comp.update_layout(template="plotly_dark", height=500)
+        fig_comp.update_layout(template="plotly_dark", height=600, hovermode="x unified",
+                              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        fig_comp.update_yaxes(title_text="Fondo Sugerido", secondary_y=False, categoryorder="array", categoryarray=["E", "D", "C"])
+        fig_comp.update_yaxes(title_text="Valor Cuota ($)", secondary_y=True, autorange=True)
+        
         st.plotly_chart(fig_comp, use_container_width=True)
